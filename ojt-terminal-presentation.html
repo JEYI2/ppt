@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>의미있는 과제 진행상황 보고 — Terminal DS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;0,800;1,300;1,400&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════════
+       TERMINAL DESIGN SYSTEM — CSS VARIABLES
+    ═══════════════════════════════════════ */
+    :root {
+      --bg:        #080E08;
+      --bg-mid:    #0D150D;
+      --bg-panel:  #111A11;
+      --bg-hover:  #172117;
+      --border:    #1E2E1E;
+      --border-hi: #2A422A;
+      --green:     #00CC44;
+      --green-mid: #00AA33;
+      --green-dim: #008822;
+      --green-pale:#00FF5588;
+      --green-glow:rgba(0,204,68,0.12);
+      --amber:     #FFAA00;
+      --amber-dim: #CC8800;
+      --red-t:     #FF3333;
+      --text:      #CCFFCC;
+      --text-mid:  #88BB88;
+      --text-dim:  #557755;
+      --text-mute: #334433;
+      --scan: rgba(0,255,80,0.015);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #040804;
+      font-family: 'JetBrains Mono', monospace;
+      overflow: hidden;
+      height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ── 스테이지 (16:9) ── */
+    .stage {
+      position: relative;
+      width: min(100vw, calc(100vh * 16 / 9));
+      height: min(100vh, calc(100vw * 9 / 16));
+      overflow: hidden;
+      font-size: clamp(9px, 1.38vw, 14px);
+    }
+
+    /* ── 슬라이드 ── */
+    .slide {
+      position: absolute; inset: 0;
+      display: none; flex-direction: column;
+      background: var(--bg); overflow: hidden;
+    }
+    .slide.active { display: flex; }
+
+    /* ── 스캔라인 ── */
+    .scanlines {
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        var(--scan) 2px, var(--scan) 4px
+      );
+      pointer-events: none; z-index: 10;
+    }
+
+    /* ── CRT 글로우 ── */
+    .crt-glow {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 40%, rgba(0,204,68,0.04) 0%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── 터미널 헤더 ── */
+    .t-header {
+      display: flex; align-items: center;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      padding: 0.45em 1em; gap: 0.5em;
+      flex-shrink: 0; position: relative; z-index: 5;
+    }
+    .t-dot { width: 0.6em; height: 0.6em; border-radius: 50%; }
+    .t-title-bar { font-size: 0.65em; color: var(--text-dim); flex: 1; letter-spacing: 0.05em; }
+
+    /* ── 패널 ── */
+    .t-panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      position: relative; overflow: hidden;
+    }
+    .t-panel::before {
+      content: ''; position: absolute; top: 0; left: 0;
+      width: 8px; height: 8px;
+      border-top: 1px solid var(--green-dim); border-left: 1px solid var(--green-dim);
+    }
+    .t-panel::after {
+      content: ''; position: absolute; bottom: 0; right: 0;
+      width: 8px; height: 8px;
+      border-bottom: 1px solid var(--green-dim); border-right: 1px solid var(--green-dim);
+    }
+    .t-panel-green {
+      border-color: var(--green-dim);
+      background: linear-gradient(135deg, rgba(0,204,68,0.07), var(--bg-panel));
+    }
+    .t-panel-amber {
+      border-color: rgba(255,170,0,0.35);
+      background: linear-gradient(135deg, rgba(255,170,0,0.07), var(--bg-panel));
+    }
+    .t-panel-red {
+      border-color: rgba(255,51,51,0.3);
+      background: linear-gradient(135deg, rgba(255,51,51,0.06), var(--bg-panel));
+    }
+
+    /* ── 배지 ── */
+    .t-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border: 1px solid;
+      font-size: 0.6em; font-weight: 500;
+      letter-spacing: 0.05em; text-transform: uppercase;
+    }
+    .t-badge-green { border-color: var(--green-dim); color: var(--green); background: var(--green-glow); }
+    .t-badge-amber { border-color: rgba(255,170,0,0.3); color: var(--amber); background: rgba(255,170,0,0.06); }
+    .t-badge-red   { border-color: rgba(255,51,51,0.3); color: var(--red-t); background: rgba(255,51,51,0.06); }
+    .t-badge-dim   { border-color: var(--border-hi); color: var(--text-dim); }
+
+    /* ── 프롬프트 ── */
+    .prompt > span.p { color: var(--green); font-weight: 700; }
+    .prompt-dim > span.p { color: var(--text-dim); }
+
+    /* ── 커서 ── */
+    .cursor::after { content: '▋'; color: var(--green); animation: blink 1.1s step-end infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ── 룰 ── */
+    .t-rule { height: 1px; background: linear-gradient(90deg, var(--green-dim), var(--border), transparent); }
+
+    /* ── 키워드 강조 ── */
+    .hl  { color: var(--green); font-weight: 700; }
+    .hla { color: var(--amber); font-weight: 700; }
+    .hld { color: var(--text-mid); }
+
+    /* ── 메트릭 ── */
+    .t-metric { font-weight: 800; color: var(--green); line-height: 1; text-shadow: 0 0 18px rgba(0,204,68,0.45); }
+
+    /* ── ASCII 프로그레스 ── */
+    .pb { font-size: 0.75em; color: var(--green); letter-spacing: 0; }
+    .pb-amber { color: var(--amber); }
+
+    /* ── 섹션 레이블 ── */
+    .sec-label { font-size: 0.58em; color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; }
+
+    /* ── 네비게이션 ── */
+    #t-nav {
+      position: fixed; bottom: 1.8%; left: 50%;
+      transform: translateX(-50%);
+      display: flex; align-items: center;
+      z-index: 200;
+      border: 1px solid var(--border-hi);
+      background: var(--bg-panel);
+    }
+    .nav-dot {
+      padding: 0.38em 0.75em;
+      font-size: 0.6em; font-weight: 500;
+      color: var(--text-dim); cursor: pointer;
+      border-right: 1px solid var(--border);
+      transition: all 0.2s; letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .nav-dot:last-child { border-right: none; }
+    .nav-dot.active { color: var(--green); background: var(--green-glow); }
+
+    /* ── 진행 바 ── */
+    #t-progress {
+      position: fixed; top: 0; left: 0;
+      height: 2px; background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      transition: width 0.4s ease; z-index: 200;
+    }
+
+    /* ── 개요(ESC) 모달 ── */
+    #overview {
+      display: none;
+      position: fixed; inset: 0; z-index: 300;
+      background: rgba(4,8,4,0.95);
+      padding: 4% 5%;
+      overflow-y: auto;
+    }
+    #overview.show { display: block; }
+    .ov-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 1em; }
+    .ov-item {
+      border: 1px solid var(--border);
+      background: var(--bg-panel);
+      padding: 0.8em; cursor: pointer;
+      transition: border-color 0.2s;
+      font-size: 0.65em;
+    }
+    .ov-item:hover { border-color: var(--green); color: var(--green); }
+    .ov-num { color: var(--green); font-size: 1.1em; font-weight: 700; margin-bottom: 0.3em; }
+    .ov-title { color: var(--text-mid); line-height: 1.4; }
+
+    /* ── 애니메이션 ── */
+    @keyframes typeIn  { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:translateX(0); } }
+    @keyframes fadeIn  { from { opacity:0; } to { opacity:1; } }
+    .slide.active .t1 { animation: typeIn 0.35s ease forwards; }
+    .slide.active .t2 { animation: typeIn 0.35s 0.1s ease forwards; opacity:0; }
+    .slide.active .t3 { animation: typeIn 0.35s 0.2s ease forwards; opacity:0; }
+    .slide.active .t4 { animation: typeIn 0.35s 0.3s ease forwards; opacity:0; }
+    .slide.active .t5 { animation: fadeIn  0.5s 0.42s ease forwards; opacity:0; }
+    .slide.active .t6 { animation: typeIn 0.35s 0.52s ease forwards; opacity:0; }
+  </style>
+</head>
+<body>
+
+<div id="t-progress"></div>
+
+<div class="stage" id="stage">
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 1 — TITLE
+════════════════════════════════════════════════════════ -->
+<div class="slide active" data-index="0">
+  <div class="scanlines"></div><div class="crt-glow"></div>
+  <div class="t-header t1">
+    <div class="t-dot" style="background:#FF5F57;"></div>
+    <div class="t-dot" style="background:#FEBC2E;"></div>
+    <div class="t-dot" style="background:#28C840;"></div>
+    <span class="t-title-bar">terminal — ojt_progress_report.sh — [SESSION START]</span>
+    <span class="t-badge t-badge-green">● LIVE</span>
+  </div>
+
+  <div style="position:relative;z-index:1;display:flex;height:100%;padding:3.5% 6% 7%;">
+    <!-- 메인 -->
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:1.1em;">
+      <div class="t2">
+        <span class="t-badge t-badge-green">OJT Progress Report</span>
+        <span style="margin-left:0.5em;" class="t-badge t-badge-amber">2025</span>
+      </div>
+
+      <pre class="t3" style="font-size:0.72em;font-weight:800;color:var(--green);line-height:1.25;
+        text-shadow:0 0 14px rgba(0,204,68,0.5);">
+ ██████╗      ██╗    ████████╗
+██╔═══██╗     ██║       ██╔═╝
+██║   ██║     ██║       ██║
+██║   ██║██   ██║       ██║
+╚██████╔╝╚█████╔╝       ██║
+ ╚═════╝  ╚════╝        ╚═╝  PROGRESS_REPORT</pre>
+
+      <div class="t-rule t4"></div>
+
+      <div class="t4" style="display:flex;flex-direction:column;gap:0.35em;">
+        <p style="font-size:0.88em;color:var(--text);">
+          <span style="color:var(--green);font-weight:700;">&gt; </span>
+          PROJECT: <span class="hl">DCM 데이터 기반 영업부 예측 시스템 고도화</span>
+        </p>
+        <p style="font-size:0.82em;color:var(--text-mid);padding-left:1.3em;">
+          :: 영업부가 데이터를 활용하기 편한 방식으로 고도화
+        </p>
+        <p style="font-size:0.82em;color:var(--text-mid);padding-left:1.3em;">
+          :: 투명하고, 공정하고, 객관적인 실매출 평가 체계 구축
+        </p>
+      </div>
+
+      <div class="t5" style="display:flex;gap:1em;flex-wrap:wrap;">
+        <span class="t-badge t-badge-green">✓ AI 로직 구현</span>
+        <span class="t-badge t-badge-green">✓ 대시보드 설계</span>
+        <span class="t-badge t-badge-amber">● 진행중</span>
+      </div>
+
+      <p class="t6 cursor" style="font-size:0.85em;color:var(--green);font-weight:700;">
+        &gt; 보고를 시작합니다_
+      </p>
+    </div>
+
+    <!-- 사이드 인포 패널 -->
+    <div class="t4" style="width:26%;display:flex;flex-direction:column;gap:0.7em;padding-left:2em;">
+      <div class="t-panel t-panel-green" style="padding:0.9em 1em;flex:1;">
+        <div class="sec-label" style="margin-bottom:0.7em;">REPORT_INFO</div>
+        <div style="display:flex;flex-direction:column;gap:0.35em;">
+          <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:0.3em;">
+            <span style="font-size:0.7em;color:var(--text-dim);">NAME</span>
+            <span style="font-size:0.7em;color:var(--green);font-weight:700;">이제이</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:0.3em;">
+            <span style="font-size:0.7em;color:var(--text-dim);">DEPT</span>
+            <span style="font-size:0.7em;color:var(--text);">영업지원</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:0.3em;">
+            <span style="font-size:0.7em;color:var(--text-dim);">MENTOR</span>
+            <span style="font-size:0.7em;color:var(--text);">박지현</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="font-size:0.7em;color:var(--text-dim);">LEAD</span>
+            <span style="font-size:0.7em;color:var(--text);">이태훈</span>
+          </div>
+        </div>
+      </div>
+      <div class="t-panel" style="padding:0.65em 1em;">
+        <div class="sec-label" style="margin-bottom:0.3em;">SYSTEM LOAD</div>
+        <div class="pb">[<span style="color:var(--green);">████████████████░░░░</span>] 80%</div>
+        <div class="pb pb-amber" style="margin-top:0.2em;">[<span>██░░░░░░░░░░░░░░░░░░</span>] 14%<span style="color:var(--text-dim)"> 관심도(현재)</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 2 — 과제 & 대상자 정보
+════════════════════════════════════════════════════════ -->
+<div class="slide" data-index="1">
+  <div class="scanlines"></div><div class="crt-glow"></div>
+  <div class="t-header t1">
+    <div class="t-dot" style="background:#FF5F57;"></div>
+    <div class="t-dot" style="background:#FEBC2E;"></div>
+    <div class="t-dot" style="background:#28C840;"></div>
+    <span class="t-title-bar">terminal — 01_project_overview.sh</span>
+    <span class="t-badge t-badge-dim">1. 대상자정보 / 2. OJT평가</span>
+  </div>
+
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;height:100%;padding:3% 5.5% 7%;">
+    <div class="t1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1em;">
+      <h2 style="font-size:2em;font-weight:800;color:var(--text);">
+        <span style="color:var(--green);">#</span> 과제 개요
+      </h2>
+      <span class="t-badge t-badge-green">OVERVIEW</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.1em;flex:1;">
+
+      <!-- 좌: 대상자 정보 + 과제명 -->
+      <div style="display:flex;flex-direction:column;gap:0.85em;">
+        <div class="sec-label t2">## SUBJECT_INFO</div>
+
+        <div class="t2 t-panel" style="padding:0.85em 1em;">
+          <div class="sec-label" style="margin-bottom:0.55em;">인적사항</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:0.25em 1em;align-items:center;">
+            <span style="font-size:0.68em;color:var(--text-dim);">성명</span>
+            <span style="font-size:0.85em;color:var(--green);font-weight:700;">이제이</span>
+            <span style="font-size:0.68em;color:var(--text-dim);">소속</span>
+            <span style="font-size:0.82em;color:var(--text);">영업지원</span>
+            <span style="font-size:0.68em;color:var(--text-dim);">담당 멘토</span>
+            <span style="font-size:0.82em;color:var(--text);">박지현</span>
+            <span style="font-size:0.68em;color:var(--text-dim);">팀장</span>
+            <span style="font-size:0.82em;color:var(--text);">이태훈</span>
+          </div>
+        </div>
+
+        <div class="sec-label t3">## TASK_NAME</div>
+
+        <div class="t3 t-panel t-panel-green" style="padding:1em 1.1em;flex:1;">
+          <div class="sec-label" style="margin-bottom:0.5em;">과제</div>
+          <p style="font-size:0.88em;color:var(--text);line-height:1.6;font-weight:500;">
+            <span class="hl">DCM 데이터 기반</span>의 영업부<br>
+            <span class="hl">예측 시스템 고도화</span>
+          </p>
+          <div class="t-rule" style="margin:0.6em 0;"></div>
+          <p style="font-size:0.75em;color:var(--text-mid);line-height:1.5;">
+            :: 영업부가 데이터를 활용하기 편한 방식으로 고도화
+          </p>
+        </div>
+      </div>
+
+      <!-- 우: 핵심 목표 미리보기 + 구조 -->
+      <div style="display:flex;flex-direction:column;gap:0.85em;">
+        <div class="sec-label t2">## PROJECT_STRUCTURE</div>
+
+        <div class="t2 t-panel" style="padding:0.85em 1em;">
+          <div class="sec-label" style="margin-bottom:0.5em;">핵심 방향성</div>
+          <div style="display:flex;gap:0.5em;align-items:center;">
+            <div style="flex:1;text-align:center;padding:0.6em 0;border:1px solid var(--green-dim);background:var(--green-glow);">
+              <div style="font-size:1.4em;font-weight:800;color:var(--green);">투명</div>
+              <div style="font-size:0.6em;color:var(--text-dim);margin-top:0.15em;">TRANSPARENT</div>
+            </div>
+            <span style="color:var(--text-dim);font-size:0.8em;">+</span>
+            <div style="flex:1;text-align:center;padding:0.6em 0;border:1px solid var(--green-dim);background:var(--green-glow);">
+              <div style="font-size:1.4em;font-weight:800;color:var(--green);">공정</div>
+              <div style="font-size:0.6em;color:var(--text-dim);margin-top:0.15em;">FAIR</div>
+            </div>
+            <span style="color:var(--text-dim);font-size:0.8em;">+</span>
+            <div style="flex:1;text-align:center;padding:0.6em 0;border:1px solid var(--green-dim);background:var(--green-glow);">
+              <div style="font-size:1.4em;font-weight:800;color:var(--green);">객관</div>
+              <div style="font-size:0.6em;color:var(--text-dim);margin-top:0.15em;">OBJECTIVE</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="t3 t-panel" style="padding:0.85em 1em;flex:1;">
+          <div class="sec-label" style="margin-bottom:0.5em;">수행 구조 개요</div>
+          <div style="display:flex;flex-direction:column;gap:0.4em;">
+            <div style="display:flex;align-items:center;gap:0.6em;">
+              <span class="t-badge t-badge-green" style="flex-shrink:0;">TASK 1</span>
+              <span style="font-size:0.75em;color:var(--text-mid);">AI 로직 구현 — 거래처/품목별 숫자 산출</span>
+            </div>
+            <div style="padding-left:0.5em;display:flex;flex-direction:column;gap:0.2em;">
+              <p style="font-size:0.68em;color:var(--text-dim);">├ Gemini CLI 연동 개발</p>
+              <p style="font-size:0.68em;color:var(--text-dim);">├ 다차원 데이터 병합 (200K+ 로우)</p>
+              <p style="font-size:0.68em;color:var(--text-dim);">└ 신뢰도 등급 체계 A-C 수립</p>
+            </div>
+            <div class="t-rule" style="margin:0.2em 0;"></div>
+            <div style="display:flex;align-items:center;gap:0.6em;">
+              <span class="t-badge t-badge-amber" style="flex-shrink:0;">TASK 2</span>
+              <span style="font-size:0.75em;color:var(--text-mid);">DCM 대시보드 구성안</span>
+            </div>
+            <div style="padding-left:0.5em;display:flex;flex-direction:column;gap:0.2em;">
+              <p style="font-size:0.68em;color:var(--text-dim);">├ 2페이지 체제 (병원 요약 / 제품군 상세)</p>
+              <p style="font-size:0.68em;color:var(--text-dim);">├ 주요 기능 8종 (①~⑧)</p>
+              <p style="font-size:0.68em;color:var(--text-dim);">└ 이메일 기반 보안 접근 제어</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 3 — 목표 (OKR)
+════════════════════════════════════════════════════════ -->
+<div class="slide" data-index="2">
+  <div class="scanlines"></div><div class="crt-glow"></div>
+  <div class="t-header t1">
+    <div class="t-dot" style="background:#FF5F57;"></div>
+    <div class="t-dot" style="background:#FEBC2E;"></div>
+    <div class="t-dot" style="background:#28C840;"></div>
+    <span class="t-title-bar">terminal — 02_objectives.sh — OKR</span>
+    <span class="t-badge t-badge-green">OBJECTIVES</span>
+  </div>
+
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;height:100%;padding:3% 5.5% 7%;">
+    <div class="t1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1em;">
+      <h2 style="font-size:2em;font-weight:800;color:var(--text);">
+        <span style="color:var(--green);">#</span> 목표 <span style="color:var(--green);">(OKR)</span>
+      </h2>
+      <span class="t-badge t-badge-amber">KEY_RESULTS × 3</span>
+    </div>
+
+    <!-- Objective -->
+    <div class="t2 t-panel t-panel-green" style="padding:0.85em 1.2em;margin-bottom:0.9em;">
+      <div class="sec-label" style="margin-bottom:0.35em;">// OBJECTIVE — 최상위 목표</div>
+      <p style="font-size:0.9em;color:var(--text);font-weight:600;line-height:1.55;">
+        <span style="color:var(--green);">&gt;&gt; </span>
+        실매출 평가를 바탕으로 영업부가
+        <span class="hl">투명하고, 공정하고, 객관적인 평가</span>를 받을 수 있도록 함
+      </p>
+    </div>
+
+    <!-- KRs -->
+    <div style="display:flex;flex-direction:column;gap:0.75em;flex:1;">
+
+      <!-- KR1 -->
+      <div class="t3 t-panel" style="padding:0.85em 1.2em;flex:1;">
+        <div style="display:flex;align-items:flex-start;gap:0.8em;">
+          <div style="flex-shrink:0;width:2em;height:2em;border:1px solid var(--green);
+            display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--green);font-size:0.9em;">
+            K1
+          </div>
+          <div style="flex:1;">
+            <div class="sec-label" style="margin-bottom:0.3em;">KEY RESULT 01 — AI 로직</div>
+            <p style="font-size:0.82em;color:var(--text);line-height:1.55;">
+              AI를 접목하여 거래처별/품목별 숫자를 영업부와
+              <span class="hl">수시로 일치화</span>할 수 있는 로직을 구현
+            </p>
+          </div>
+          <span class="t-badge t-badge-green" style="flex-shrink:0;">● 완료</span>
+        </div>
+      </div>
+
+      <!-- KR2 -->
+      <div class="t4 t-panel t-panel-amber" style="padding:0.85em 1.2em;flex:1;">
+        <div style="display:flex;align-items:flex-start;gap:0.8em;">
+          <div style="flex-shrink:0;width:2em;height:2em;border:1px solid var(--amber);
+            display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--amber);font-size:0.9em;">
+            K2
+          </div>
+          <div style="flex:1;">
+            <div class="sec-label" style="margin-bottom:0.3em;color:var(--amber-dim);">KEY RESULT 02 — 관심도/만족도</div>
+            <p style="font-size:0.82em;color:var(--text);line-height:1.55;">
+              현재 관심도 <span class="hla">14%</span> (37명 중 5명) 대비
+              실매출 관심도 <span class="hl">90% 이상</span>, 만족도 <span class="hl">4.0 이상</span> 확보
+            </p>
+            <div style="margin-top:0.6em;display:flex;flex-direction:column;gap:0.25em;">
+              <div style="display:flex;align-items:center;gap:0.6em;">
+                <span style="font-size:0.62em;color:var(--text-dim);width:4em;">현재</span>
+                <div class="pb pb-amber">[<span>██░░░░░░░░░░░░░░░░░░</span>] <span class="hla">14%</span></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:0.6em;">
+                <span style="font-size:0.62em;color:var(--text-dim);width:4em;">목표</span>
+                <div class="pb">[<span style="color:var(--green);">██████████████████░░</span>] <span class="hl">90%+</span></div>
+              </div>
+            </div>
+          </div>
+          <span class="t-badge t-badge-amber" style="flex-shrink:0;">● 진행중</span>
+        </div>
+      </div>
+
+      <!-- KR3 -->
+      <div class="t5 t-panel" style="padding:0.85em 1.2em;flex:1;">
+        <div style="display:flex;align-items:flex-start;gap:0.8em;">
+          <div style="flex-shrink:0;width:2em;height:2em;border:1px solid var(--green);
+            display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--green);font-size:0.9em;">
+            K3
+          </div>
+          <div style="flex:1;">
+            <div class="sec-label" style="margin-bottom:0.3em;">KEY RESULT 03 — 검증 프로세스</div>
+            <p style="font-size:0.82em;color:var(--text);line-height:1.55;">
+              실적 확정 전, 영업부 주도의 <span class="hl">상시 검증 프로세스</span>를 구축하여
+              평가 정확도 개선 및 이슈 즉각 조치
+            </p>
+          </div>
+          <span class="t-badge t-badge-amber" style="flex-shrink:0;">● 설계중</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 4 — 전략 / 할 일
+════════════════════════════════════════════════════════ -->
+<div class="slide" data-index="3">
+  <div class="scanlines"></div><div class="crt-glow"></div>
+  <div class="t-header t1">
+    <div class="t-dot" style="background:#FF5F57;"></div>
+    <div class="t-dot" style="background:#FEBC2E;"></div>
+    <div class="t-dot" style="background:#28C840;"></div>
+    <span class="t-title-bar">terminal — 03_strategy.sh</span>
+    <span class="t-badge t-badge-amber">STRATEGY × 4</span>
+  </div>
+
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;height:100%;padding:3% 5.5% 7%;">
+    <div class="t1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1em;">
+      <h2 style="font-size:2em;font-weight:800;color:var(--text);">
+        <span style="color:var(--green);">#</span> 전략 <span style="color:var(--green);">/</span> 할 일
+      </h2>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;flex:1;">
+
+      <!-- S1 -->
+      <div class="t2 t-panel t-panel-green" style="padding:1em 1.1em;display:flex;flex-direction:column;gap:0.6em;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="t-badge t-badge-green">STRATEGY_01</span>
+          <span style="font-size:0.62em;color:var(--text-dim);">참고 지표 생성</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.8em;color:var(--text);line-height:1.6;">
+          <span style="color:var(--green);font-weight:700;">&gt; </span>
+          거래처별 월별 <span class="hl">'등급 현황'</span> 컬럼 추가
+        </p>
+        <p style="font-size:0.75em;color:var(--text-mid);line-height:1.55;padding-left:1.2em;">
+          :: 예측 신뢰도 변화 추이 확인 가능하도록 구조 설계
+        </p>
+        <div style="margin-top:auto;display:flex;gap:0.4em;flex-wrap:wrap;">
+          <span class="t-badge t-badge-green" style="font-size:0.55em;">Grade A/B/C</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;">월별 추이</span>
+        </div>
+      </div>
+
+      <!-- S2 -->
+      <div class="t3 t-panel" style="padding:1em 1.1em;display:flex;flex-direction:column;gap:0.6em;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="t-badge t-badge-green">STRATEGY_02</span>
+          <span style="font-size:0.62em;color:var(--text-dim);">직관적 대시보드 구축</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.8em;color:var(--text);line-height:1.6;">
+          <span style="color:var(--green);font-weight:700;">&gt; </span>
+          복잡한 엑셀 → <span class="hl">핵심 지표 위주 시각화</span>
+        </p>
+        <p style="font-size:0.75em;color:var(--text-mid);line-height:1.55;padding-left:1.2em;">
+          :: 영업부 접근성 강화를 위한 시각화 구현
+        </p>
+        <div style="margin-top:auto;display:flex;gap:0.4em;flex-wrap:wrap;">
+          <span class="t-badge t-badge-green" style="font-size:0.55em;">Dashboard</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;">접근성↑</span>
+        </div>
+      </div>
+
+      <!-- S3 -->
+      <div class="t4 t-panel t-panel-amber" style="padding:1em 1.1em;display:flex;flex-direction:column;gap:0.6em;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="t-badge t-badge-amber">STRATEGY_03</span>
+          <span style="font-size:0.62em;color:var(--text-dim);">모바일 전용 레이아웃</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.8em;color:var(--text);line-height:1.6;">
+          <span style="color:var(--amber);font-weight:700;">&gt; </span>
+          가독성을 고려한 <span class="hla">모바일 전용</span> 대시보드 레이아웃 구현
+        </p>
+        <p style="font-size:0.75em;color:var(--text-mid);line-height:1.55;padding-left:1.2em;">
+          :: 현장 영업사원의 스마트폰 환경 최적화
+        </p>
+        <div style="margin-top:auto;display:flex;gap:0.4em;flex-wrap:wrap;">
+          <span class="t-badge t-badge-amber" style="font-size:0.55em;">Mobile-First</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;">UX 최적화</span>
+        </div>
+      </div>
+
+      <!-- S4 -->
+      <div class="t5 t-panel" style="padding:1em 1.1em;display:flex;flex-direction:column;gap:0.6em;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="t-badge t-badge-green">STRATEGY_04</span>
+          <span style="font-size:0.62em;color:var(--text-dim);">단계별 홍보 & VOC</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.8em;color:var(--text);line-height:1.6;">
+          <span style="color:var(--green);font-weight:700;">&gt; </span>
+          일부 사무소 <span class="hl">시험 운영</span> → 설문조사 VOC 수집/분석
+        </p>
+        <p style="font-size:0.75em;color:var(--text-mid);line-height:1.55;padding-left:1.2em;">
+          :: 영업 현장 커뮤니케이션 강화 (ex. 설문조사)<br>
+          :: 영업부 VOC 수집 및 반영
+        </p>
+        <div style="margin-top:auto;display:flex;gap:0.4em;flex-wrap:wrap;">
+          <span class="t-badge t-badge-green" style="font-size:0.55em;">Pilot</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;">VOC 분석</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 5 — 한 일 ① AI 로직 구현
+════════════════════════════════════════════════════════ -->
+<div class="slide" data-index="4">
+  <div class="scanlines"></div><div class="crt-glow"></div>
+  <div class="t-header t1">
+    <div class="t-dot" style="background:#FF5F57;"></div>
+    <div class="t-dot" style="background:#FEBC2E;"></div>
+    <div class="t-dot" style="background:#28C840;"></div>
+    <span class="t-title-bar">terminal — 04_done_ai_logic.sh — [TASK 1 COMPLETE]</span>
+    <span class="t-badge t-badge-green">✓ DONE</span>
+  </div>
+
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;height:100%;padding:3% 5.5% 7%;">
+    <div class="t1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.9em;">
+      <h2 style="font-size:2em;font-weight:800;color:var(--text);">
+        <span style="color:var(--green);">#</span> 한 일 — Task 1: <span style="color:var(--green);">AI 로직 구현</span>
+      </h2>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;flex:1;">
+
+      <!-- 좌: Gemini + 데이터병합 -->
+      <div style="display:flex;flex-direction:column;gap:0.85em;">
+
+        <!-- 1) Gemini CLI -->
+        <div class="t2 t-panel t-panel-green" style="padding:0.85em 1em;flex:1;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5em;">
+            <span class="t-badge t-badge-green">1) Gemini CLI 연동 개발</span>
+          </div>
+          <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+            VS Code 환경에서 <span class="hl">Gemini CLI</span>를 활용한<br>
+            파이썬 스크립트 작성
+          </p>
+          <div class="t-rule" style="margin:0.55em 0;"></div>
+          <!-- 속도 비교 -->
+          <div style="display:flex;align-items:stretch;gap:0.5em;">
+            <div style="flex:1;text-align:center;padding:0.5em;border:1px solid rgba(255,170,0,0.3);background:rgba(255,170,0,0.05);">
+              <div class="t-metric" style="font-size:1.6em;color:var(--amber);">30분</div>
+              <div style="font-size:0.6em;color:var(--text-dim);margin-top:0.15em;">기존 수작업</div>
+            </div>
+            <div style="display:flex;align-items:center;font-size:1.1em;color:var(--green);">→</div>
+            <div style="flex:1;text-align:center;padding:0.5em;border:1px solid var(--green-dim);background:var(--green-glow);">
+              <div class="t-metric" style="font-size:1.6em;">1~5분</div>
+              <div style="font-size:0.6em;color:var(--text-dim);margin-top:0.15em;">개선 후</div>
+            </div>
+            <div style="display:flex;align-items:center;font-size:1.1em;color:var(--text-dim);">=</div>
+            <div style="flex:0.8;text-align:center;padding:0.5em;border:1px solid var(--border-hi);">
+              <div class="t-metric" style="font-size:2em;text-shadow:0 0 20px rgba(0,204,68,0.7);">6×</div>
+              <div style="font-size:0.6em;color:var(--green);margin-top:0.15em;">속도 향상</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2) 데이터 병합 -->
+        <div class="t3 t-panel" style="padding:0.85em 1em;flex:1;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5em;">
+            <span class="t-badge t-badge-green">2) 다차원 데이터 병합</span>
+          </div>
+          <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+            병원 사업자번호 & 기준 품명을 <span class="hl">Join Key</span>로 활용<br>
+            <span class="hl">OCS ↔ DCM</span> 데이터 통합
+          </p>
+          <div class="t-rule" style="margin:0.5em 0;"></div>
+          <div style="display:flex;align-items:center;gap:0.6em;padding:0.4em 0.7em;border:1px solid var(--green-dim);background:var(--green-glow);">
+            <div class="t-metric" style="font-size:1.5em;">200,000<span style="font-size:0.6em;color:var(--text-mid);">+</span></div>
+            <span style="font-size:0.72em;color:var(--text-mid);line-height:1.4;">건 이상의 대용량<br>로우 데이터 자동 매칭</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 우: 등급 체계 -->
+      <div class="t4 t-panel" style="padding:0.9em 1.1em;display:flex;flex-direction:column;gap:0.7em;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.2em;">
+          <span class="t-badge t-badge-green">3) 월별 신뢰도 등급 체계 수립</span>
+        </div>
+        <div class="sec-label">// grade_system — OCS-DCM 일치율 기반</div>
+
+        <!-- 코드 블록 -->
+        <div class="t-panel" style="padding:0.7em 1em;font-size:0.72em;">
+          <div style="color:var(--text-dim);margin-bottom:0.35em;"># grade_logic.py</div>
+          <div style="color:var(--text-dim);">def <span style="color:var(--green);font-weight:700;">get_grade</span>(match_rate):</div>
+          <div style="color:var(--text-dim);padding-left:1.3em;"><span style="color:var(--amber);">if</span>   match_rate &gt;= <span style="color:var(--green);">0.80</span>: <span style="color:var(--amber);">return</span> <span style="color:var(--green);">"A"</span>  <span style="color:var(--text-mute);"># 80%↑</span></div>
+          <div style="color:var(--text-dim);padding-left:1.3em;"><span style="color:var(--amber);">elif</span> match_rate &gt;= <span style="color:var(--green);">0.60</span>: <span style="color:var(--amber);">return</span> <span style="color:var(--green);">"B"</span>  <span style="color:var(--text-mute);"># 60~80%</span></div>
+          <div style="color:var(--text-dim);padding-left:1.3em;"><span style="color:var(--amber);">else</span>:                  <span style="color:var(--amber);">return</span> <span style="color:var(--amber);">"C"</span>  <span style="color:var(--text-mute);"># 60%↓</span></div>
+        </div>
+
+        <!-- 등급 바 -->
+        <div style="display:flex;flex-direction:column;gap:0.5em;flex:1;justify-content:center;">
+          <div style="padding:0.65em 0.9em;border:1px solid rgba(0,204,68,0.4);background:rgba(0,204,68,0.06);display:flex;align-items:center;gap:0.8em;">
+            <div style="width:2em;height:2em;border:1px solid var(--green);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--green);font-size:1em;flex-shrink:0;">A</div>
+            <div style="flex:1;">
+              <div style="font-size:0.72em;color:var(--green);font-weight:700;margin-bottom:0.15em;">Grade A — 일치율 80% 이상</div>
+              <div class="pb" style="font-size:0.65em;">[<span style="color:var(--green);">████████████████░░░░</span>] 80%+</div>
+            </div>
+            <span class="t-badge t-badge-green" style="font-size:0.55em;">최우수</span>
+          </div>
+          <div style="padding:0.65em 0.9em;border:1px solid var(--border-hi);background:var(--bg-hover);display:flex;align-items:center;gap:0.8em;">
+            <div style="width:2em;height:2em;border:1px solid var(--text-dim);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--text);font-size:1em;flex-shrink:0;">B</div>
+            <div style="flex:1;">
+              <div style="font-size:0.72em;color:var(--text);font-weight:700;margin-bottom:0.15em;">Grade B — 일치율 60~80%</div>
+              <div class="pb" style="font-size:0.65em;">[<span style="color:var(--text-mid);">████████████░░░░░░░░</span>] 60~80%</div>
+            </div>
+            <span class="t-badge t-badge-dim" style="font-size:0.55em;">양호</span>
+          </div>
+          <div style="padding:0.65em 0.9em;border:1px solid rgba(255,170,0,0.3);background:rgba(255,170,0,0.04);display:flex;align-items:center;gap:0.8em;">
+            <div style="width:2em;height:2em;border:1px solid var(--amber);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--amber);font-size:1em;flex-shrink:0;">C</div>
+            <div style="flex:1;">
+              <div style="font-size:0.72em;color:var(--amber);font-weight:700;margin-bottom:0.15em;">Grade C — 일치율 60% 미만</div>
+              <div class="pb pb-amber" style="font-size:0.65em;">[<span>████████░░░░░░░░░░░░</span>] ~60%</div>
+            </div>
+            <span class="t-badge t-badge-amber" style="font-size:0.55em;">주의</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 6 — 한 일 ② 대시보드 전체 구조
+════════════════════════════════════════════════════════ -->
+<div class="slide" data-index="5">
+  <div class="scanlines"></div><div class="crt-glow"></div>
+  <div class="t-header t1">
+    <div class="t-dot" style="background:#FF5F57;"></div>
+    <div class="t-dot" style="background:#FEBC2E;"></div>
+    <div class="t-dot" style="background:#28C840;"></div>
+    <span class="t-title-bar">terminal — 05_dashboard_structure.sh — [TASK 2]</span>
+    <span class="t-badge t-badge-amber">DASHBOARD SPEC</span>
+  </div>
+
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;height:100%;padding:3% 5.5% 7%;">
+    <div class="t1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.9em;">
+      <h2 style="font-size:2em;font-weight:800;color:var(--text);">
+        <span style="color:var(--green);">#</span> DCM 실적 평가 <span style="color:var(--green);">&amp;</span> 예측 대시보드
+      </h2>
+      <span class="t-badge t-badge-amber">2-PAGE SYSTEM</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;flex:1;">
+
+      <!-- 좌: 전체 구조 -->
+      <div style="display:flex;flex-direction:column;gap:0.8em;">
+        <div class="sec-label t2">## SYSTEM_ARCHITECTURE</div>
+
+        <div class="t2 t-panel t-panel-green" style="padding:0.85em 1em;flex:1;">
+          <div class="sec-label" style="margin-bottom:0.55em;">1페이지 — 병원 요약</div>
+          <div style="display:flex;align-items:center;gap:0.5em;margin-bottom:0.5em;">
+            <div style="flex-shrink:0;width:1.8em;height:1.8em;border:1px solid var(--green);
+              display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--green);font-size:0.72em;">P1</div>
+            <p style="font-size:0.78em;color:var(--text);line-height:1.5;">
+              거래처별 전반적인 <span class="hl">실적 등급</span>과<br>
+              <span class="hl">예측 신뢰도</span> 확인
+            </p>
+          </div>
+          <div style="padding:0.4em 0.6em;background:rgba(0,204,68,0.04);border:1px solid var(--border);">
+            <div class="sec-label" style="margin-bottom:0.3em;">포함 컴포넌트</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.3em;">
+              <span class="t-badge t-badge-green" style="font-size:0.55em;">검색/필터</span>
+              <span class="t-badge t-badge-green" style="font-size:0.55em;">중첩 막대차트</span>
+              <span class="t-badge t-badge-green" style="font-size:0.55em;">게이지차트</span>
+              <span class="t-badge t-badge-green" style="font-size:0.55em;">신뢰도등급</span>
+              <span class="t-badge t-badge-green" style="font-size:0.55em;">원형등급표시</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="t3 t-panel t-panel-amber" style="padding:0.85em 1em;flex:1;">
+          <div class="sec-label" style="margin-bottom:0.55em;color:var(--amber-dim);">2페이지 — 제품군 상세</div>
+          <div style="display:flex;align-items:center;gap:0.5em;margin-bottom:0.5em;">
+            <div style="flex-shrink:0;width:1.8em;height:1.8em;border:1px solid var(--amber);
+              display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--amber);font-size:0.72em;">P2</div>
+            <p style="font-size:0.78em;color:var(--text);line-height:1.5;">
+              특정 병원의 <span class="hla">품목별 매출 비중</span> 및<br>
+              목표 대비 달성률 시각화
+            </p>
+          </div>
+          <div style="padding:0.4em 0.6em;background:rgba(255,170,0,0.03);border:1px solid var(--border);">
+            <div class="sec-label" style="margin-bottom:0.3em;">포함 컴포넌트</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.3em;">
+              <span class="t-badge t-badge-amber" style="font-size:0.55em;">도넛차트</span>
+              <span class="t-badge t-badge-amber" style="font-size:0.55em;">Bar포함 표차트</span>
+              <span class="t-badge t-badge-amber" style="font-size:0.55em;">달성률 시각화</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 우: 연동 구조 + 보안 -->
+      <div style="display:flex;flex-direction:column;gap:0.8em;">
+        <div class="sec-label t2">## FILTER_SYSTEM & SECURITY</div>
+
+        <div class="t4 t-panel" style="padding:0.85em 1em;">
+          <div class="sec-label" style="margin-bottom:0.5em;">상호 연동 필터 구조</div>
+          <!-- 연동 다이어그램 -->
+          <div style="display:flex;align-items:center;justify-content:center;gap:0.5em;padding:0.7em 0;">
+            <div style="text-align:center;padding:0.5em 0.8em;border:1px solid var(--green-dim);background:var(--green-glow);">
+              <div style="font-size:0.7em;color:var(--green);font-weight:700;">PAGE 1</div>
+              <div style="font-size:0.6em;color:var(--text-dim);">병원 요약</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:0.1em;">
+              <span style="font-size:0.65em;color:var(--green);">⇌</span>
+              <span style="font-size:0.55em;color:var(--text-dim);">FILTER</span>
+            </div>
+            <div style="text-align:center;padding:0.5em 0.8em;border:1px solid rgba(255,170,0,0.3);background:rgba(255,170,0,0.05);">
+              <div style="font-size:0.7em;color:var(--amber);font-weight:700;">PAGE 2</div>
+              <div style="font-size:0.6em;color:var(--text-dim);">제품군 상세</div>
+            </div>
+          </div>
+          <p style="font-size:0.72em;color:var(--text-mid);line-height:1.5;text-align:center;">
+            :: 상호 연동되는 필터로 직관적인 데이터 탐색
+          </p>
+        </div>
+
+        <div class="t5 t-panel" style="padding:0.85em 1em;">
+          <div class="sec-label" style="margin-bottom:0.5em;">검색 및 필터링 기능</div>
+          <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+            병원명 / 사업자번호 <span class="hl">드롭다운 목록</span>을 통해<br>원하는 병원의 데이터 즉시 조회 가능
+          </p>
+          <div style="margin-top:0.5em;padding:0.4em 0.7em;border:1px solid var(--border);
+            background:var(--bg-hover);font-size:0.7em;color:var(--text-dim);">
+            <span style="color:var(--green);">&gt; </span>SELECT * FROM hospitals WHERE name LIKE '%<span class="hl">검색어</span>%';
+          </div>
+        </div>
+
+        <div class="t6 t-panel t-panel-red" style="padding:0.85em 1em;flex:1;">
+          <div style="display:flex;align-items:center;gap:0.5em;margin-bottom:0.5em;">
+            <span class="t-badge t-badge-red">🔒 SECURITY</span>
+            <span class="sec-label">보안 관리</span>
+          </div>
+          <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+            사용자 <span style="color:var(--red-t);font-weight:700;">이메일 주소</span> 기반으로<br>
+            대시보드 <span class="hl">접근 권한 제어</span>
+          </p>
+          <div class="t-rule" style="margin:0.5em 0;"></div>
+          <p style="font-size:0.7em;color:var(--text-dim);">:: 데이터 보안 강화 — 미인가 접근 차단</p>
+          <p style="font-size:0.7em;color:var(--text-dim);">:: Auth: email_whitelist → role_based_access</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 7 — 대시보드 주요 기능 ①~④
+════════════════════════════════════════════════════════ -->
+<div class="slide" data-index="6">
+  <div class="scanlines"></div><div class="crt-glow"></div>
+  <div class="t-header t1">
+    <div class="t-dot" style="background:#FF5F57;"></div>
+    <div class="t-dot" style="background:#FEBC2E;"></div>
+    <div class="t-dot" style="background:#28C840;"></div>
+    <span class="t-title-bar">terminal — 06_features_01to04.sh — [PAGE 1 FUNCTIONS]</span>
+    <span class="t-badge t-badge-green">FUNC ①~④</span>
+  </div>
+
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;height:100%;padding:3% 5.5% 7%;">
+    <div class="t1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.9em;">
+      <h2 style="font-size:2em;font-weight:800;color:var(--text);">
+        <span style="color:var(--green);">#</span> 주요 기능 <span style="color:var(--green);">① ~ ④</span>
+        <span style="font-size:0.45em;color:var(--text-dim);font-weight:400;margin-left:0.8em;">1페이지 구성</span>
+      </h2>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;flex:1;">
+
+      <!-- ① 검색/필터 -->
+      <div class="t2 t-panel t-panel-green" style="padding:0.85em 1em;display:flex;flex-direction:column;gap:0.5em;">
+        <div style="display:flex;align-items:center;gap:0.6em;">
+          <div style="width:1.8em;height:1.8em;border:1px solid var(--green);display:flex;align-items:center;
+            justify-content:center;font-weight:800;color:var(--green);font-size:0.8em;flex-shrink:0;">①</div>
+          <span class="t-badge t-badge-green">검색 및 필터링</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+          병원명/사업자번호 <span class="hl">드롭다운 목록</span>을 통해 원하는 병원의 데이터를 조회 가능
+        </p>
+        <div style="margin-top:auto;font-size:0.68em;color:var(--text-dim);padding:0.35em 0.6em;border:1px solid var(--border);background:var(--bg-hover);">
+          <span style="color:var(--green);">&gt; </span>search_hospital(name | biz_no) → filter_data()
+        </div>
+      </div>
+
+      <!-- ② 직전 3개월 비교 -->
+      <div class="t3 t-panel" style="padding:0.85em 1em;display:flex;flex-direction:column;gap:0.5em;">
+        <div style="display:flex;align-items:center;gap:0.6em;">
+          <div style="width:1.8em;height:1.8em;border:1px solid var(--green);display:flex;align-items:center;
+            justify-content:center;font-weight:800;color:var(--green);font-size:0.8em;flex-shrink:0;">②</div>
+          <span class="t-badge t-badge-green">직전 3개월 실매출 비교</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;margin-left:auto;">중첩 막대차트</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+          직전 3개월 <span class="hl">OCS 평균 실적</span>과 <span class="hl">DCM 평균 실적</span>을 중첩 막대로 비교 시각화
+        </p>
+        <p style="font-size:0.72em;color:var(--text-dim);line-height:1.45;padding-left:0.5em;">
+          :: 과거 예측치 vs 실제 실적 Gap 직관적 파악
+        </p>
+        <!-- 간단한 막대 시각화 -->
+        <div style="display:flex;flex-direction:column;gap:0.2em;margin-top:auto;">
+          <div style="display:flex;align-items:center;gap:0.5em;">
+            <span style="font-size:0.6em;color:var(--text-dim);width:2.5em;">OCS</span>
+            <div style="height:0.8em;width:70%;background:linear-gradient(90deg,rgba(0,204,68,0.5),rgba(0,204,68,0.2));border:1px solid var(--green-dim);"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.5em;">
+            <span style="font-size:0.6em;color:var(--text-dim);width:2.5em;">DCM</span>
+            <div style="height:0.8em;width:55%;background:linear-gradient(90deg,rgba(255,170,0,0.5),rgba(255,170,0,0.2));border:1px solid rgba(255,170,0,0.3);"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ③ 게이지 차트 - 실매출 -->
+      <div class="t4 t-panel t-panel-amber" style="padding:0.85em 1em;display:flex;flex-direction:column;gap:0.5em;">
+        <div style="display:flex;align-items:center;gap:0.6em;">
+          <div style="width:1.8em;height:1.8em;border:1px solid var(--amber);display:flex;align-items:center;
+            justify-content:center;font-weight:800;color:var(--amber);font-size:0.8em;flex-shrink:0;">③</div>
+          <span class="t-badge t-badge-amber">1월 실매출 — 실매출</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;margin-left:auto;">게이지차트</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+          당월(1월)의 최종 <span class="hla">DCM 실적 수치</span>를 <span class="hl">반원형 게이지</span>로 표현
+        </p>
+        <p style="font-size:0.72em;color:var(--text-dim);line-height:1.45;padding-left:0.5em;">
+          :: 현재 수준을 직관적으로 인지 가능
+        </p>
+        <!-- 반원형 게이지 텍스트 표현 -->
+        <div style="margin-top:auto;text-align:center;padding:0.4em;border:1px solid rgba(255,170,0,0.3);background:rgba(255,170,0,0.04);">
+          <div style="font-size:0.65em;color:var(--amber);">◐ GAUGE: <span style="font-weight:700;">DCM_ACTUAL_JAN</span> ◑</div>
+          <div class="pb pb-amber" style="font-size:0.65em;margin-top:0.15em;">[<span>████████████████░░░░</span>] 80%</div>
+        </div>
+      </div>
+
+      <!-- ④ 신뢰도 등급 -->
+      <div class="t5 t-panel" style="padding:0.85em 1em;display:flex;flex-direction:column;gap:0.5em;">
+        <div style="display:flex;align-items:center;gap:0.6em;">
+          <div style="width:1.8em;height:1.8em;border:1px solid var(--green);display:flex;align-items:center;
+            justify-content:center;font-weight:800;color:var(--green);font-size:0.8em;flex-shrink:0;">④</div>
+          <span class="t-badge t-badge-green">1월 실매출 — 신뢰도</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;margin-left:auto;">스코어카드</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+          OCS-DCM 일치율 로직으로 산출된 <span class="hl">신뢰도 등급(A/B/C)</span>을 대형 텍스트로 표시
+        </p>
+        <div style="margin-top:auto;display:flex;gap:0.5em;">
+          <div style="flex:1;text-align:center;padding:0.4em;border:1px solid rgba(0,204,68,0.4);background:rgba(0,204,68,0.06);">
+            <div class="t-metric" style="font-size:1.5em;">A</div>
+            <div style="font-size:0.58em;color:var(--text-dim);">80%↑</div>
+          </div>
+          <div style="flex:1;text-align:center;padding:0.4em;border:1px solid var(--border-hi);">
+            <div class="t-metric" style="font-size:1.5em;color:var(--text);">B</div>
+            <div style="font-size:0.58em;color:var(--text-dim);">60~80%</div>
+          </div>
+          <div style="flex:1;text-align:center;padding:0.4em;border:1px solid rgba(255,170,0,0.3);background:rgba(255,170,0,0.04);">
+            <div class="t-metric" style="font-size:1.5em;color:var(--amber);">C</div>
+            <div style="font-size:0.58em;color:var(--text-dim);">60%↓</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SLIDE 8 — 대시보드 주요 기능 ⑤~⑧
+════════════════════════════════════════════════════════ -->
+<div class="slide" data-index="7">
+  <div class="scanlines"></div><div class="crt-glow"></div>
+  <div class="t-header t1">
+    <div class="t-dot" style="background:#FF5F57;"></div>
+    <div class="t-dot" style="background:#FEBC2E;"></div>
+    <div class="t-dot" style="background:#28C840;"></div>
+    <span class="t-title-bar">terminal — 07_features_05to08.sh — [ALL FUNCTIONS LOADED]</span>
+    <span class="t-badge t-badge-green">FUNC ⑤~⑧</span>
+  </div>
+
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;height:100%;padding:3% 5.5% 7%;">
+    <div class="t1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.9em;">
+      <h2 style="font-size:2em;font-weight:800;color:var(--text);">
+        <span style="color:var(--green);">#</span> 주요 기능 <span style="color:var(--green);">⑤ ~ ⑧</span>
+        <span style="font-size:0.45em;color:var(--text-dim);font-weight:400;margin-left:0.8em;">1~2페이지 구성</span>
+      </h2>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1em;flex:1;">
+
+      <!-- ⑤ 최종 평가 실적 게이지 -->
+      <div class="t2 t-panel" style="padding:0.85em 1em;display:flex;flex-direction:column;gap:0.5em;">
+        <div style="display:flex;align-items:center;gap:0.6em;">
+          <div style="width:1.8em;height:1.8em;border:1px solid var(--green);display:flex;align-items:center;
+            justify-content:center;font-weight:800;color:var(--green);font-size:0.8em;flex-shrink:0;">⑤</div>
+          <span class="t-badge t-badge-green">1월 — 최종 평가 실적</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;margin-left:auto;">게이지차트</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+          당월 실적에 <span class="hl">과거 신뢰도 가중치</span>를 적용하여 산출된
+          '최종 평가 실적(예측)'을 게이지로 표현
+        </p>
+        <p style="font-size:0.72em;color:var(--text-dim);padding-left:0.5em;">
+          :: 현장에서 실제 체감 가능한 예측 실적 제시
+        </p>
+        <div style="margin-top:auto;font-size:0.68em;color:var(--text-dim);padding:0.35em 0.6em;border:1px solid var(--border);background:var(--bg-hover);">
+          <span style="color:var(--green);">&gt; </span>final_score = actual × <span class="hl">weight(grade_history)</span>
+        </div>
+      </div>
+
+      <!-- ⑥ 직전 3개월 신뢰도 -->
+      <div class="t3 t-panel t-panel-green" style="padding:0.85em 1em;display:flex;flex-direction:column;gap:0.5em;">
+        <div style="display:flex;align-items:center;gap:0.6em;">
+          <div style="width:1.8em;height:1.8em;border:1px solid var(--green);display:flex;align-items:center;
+            justify-content:center;font-weight:800;color:var(--green);font-size:0.8em;flex-shrink:0;">⑥</div>
+          <span class="t-badge t-badge-green">직전 3개월 신뢰도 등급</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;margin-left:auto;">원형 등급</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+          직전 3개월의 월별 신뢰도 등급(A/B/C)을 <span class="hl">원형 서식</span>으로 표시
+          → 시간 흐름에 따른 추이 모니터링
+        </p>
+        <!-- 3개월 원형 등급 -->
+        <div style="margin-top:auto;display:flex;align-items:center;gap:0.6em;justify-content:center;">
+          <div style="text-align:center;">
+            <div style="width:2.2em;height:2.2em;border-radius:50%;border:1px solid var(--green);
+              display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--green);font-size:0.9em;
+              margin:0 auto;">A</div>
+            <div style="font-size:0.58em;color:var(--text-dim);margin-top:0.15em;">11월</div>
+          </div>
+          <span style="color:var(--text-dim);">→</span>
+          <div style="text-align:center;">
+            <div style="width:2.2em;height:2.2em;border-radius:50%;border:1px solid var(--text-dim);
+              display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--text);font-size:0.9em;
+              margin:0 auto;">B</div>
+            <div style="font-size:0.58em;color:var(--text-dim);margin-top:0.15em;">12월</div>
+          </div>
+          <span style="color:var(--text-dim);">→</span>
+          <div style="text-align:center;">
+            <div style="width:2.2em;height:2.2em;border-radius:50%;border:1px solid var(--green);
+              display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--green);font-size:0.9em;
+              margin:0 auto;box-shadow:0 0 8px rgba(0,204,68,0.4);">A</div>
+            <div style="font-size:0.58em;color:var(--green);margin-top:0.15em;">1월</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑦ 도넛 차트 -->
+      <div class="t4 t-panel t-panel-amber" style="padding:0.85em 1em;display:flex;flex-direction:column;gap:0.5em;">
+        <div style="display:flex;align-items:center;gap:0.6em;">
+          <div style="width:1.8em;height:1.8em;border:1px solid var(--amber);display:flex;align-items:center;
+            justify-content:center;font-weight:800;color:var(--amber);font-size:0.8em;flex-shrink:0;">⑦</div>
+          <span class="t-badge t-badge-amber">제품군별 실적 비중</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;margin-left:auto;">도넛차트</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.78em;color:var(--text);line-height:1.55;">
+          병원 내 제품군별 <span class="hla">매출 비중(%)</span>을 도넛 차트로 시각화
+          → 주력/비주력 품목 구성 한눈에 파악
+        </p>
+        <!-- 도넛 텍스트 표현 -->
+        <div style="margin-top:auto;display:flex;flex-direction:column;gap:0.2em;">
+          <div style="display:flex;align-items:center;gap:0.4em;">
+            <div style="width:0.7em;height:0.7em;background:var(--green);flex-shrink:0;"></div>
+            <div class="pb" style="font-size:0.65em;flex:1;">[<span>████████████</span>] <span class="hl">42%</span> 주력품목</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.4em;">
+            <div style="width:0.7em;height:0.7em;background:var(--amber);flex-shrink:0;"></div>
+            <div class="pb pb-amber" style="font-size:0.65em;flex:1;">[<span>█████████</span>] <span class="hla">31%</span> 중간품목</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.4em;">
+            <div style="width:0.7em;height:0.7em;background:var(--text-dim);flex-shrink:0;"></div>
+            <div class="pb" style="font-size:0.65em;flex:1;color:var(--text-dim);">[<span>███████</span>] 27% 기타</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑧ Bar 포함 표 차트 -->
+      <div class="t5 t-panel" style="padding:0.85em 1em;display:flex;flex-direction:column;gap:0.5em;">
+        <div style="display:flex;align-items:center;gap:0.6em;">
+          <div style="width:1.8em;height:1.8em;border:1px solid var(--green);display:flex;align-items:center;
+            justify-content:center;font-weight:800;color:var(--green);font-size:0.8em;flex-shrink:0;">⑧</div>
+          <span class="t-badge t-badge-green">제품군별 상세 실적</span>
+          <span class="t-badge t-badge-dim" style="font-size:0.55em;margin-left:auto;">Bar 포함 표</span>
+        </div>
+        <div class="t-rule"></div>
+        <p style="font-size:0.78em;color:var(--text);line-height:1.5;">
+          제품군별 DCM 실적을 <span class="hl">표 형식</span>으로 나열,
+          각 행에 <span class="hl">미니 막대 그래프</span> 삽입 → 총 합계 명시
+        </p>
+        <!-- 미니 테이블 -->
+        <div style="margin-top:auto;border:1px solid var(--border);overflow:hidden;font-size:0.68em;">
+          <div style="background:var(--bg-hover);padding:0.25em 0.5em;display:flex;gap:0.5em;border-bottom:1px solid var(--border);">
+            <span style="flex:2;color:var(--text-dim);">제품군</span>
+            <span style="flex:1;color:var(--text-dim);text-align:right;">실적</span>
+            <span style="flex:2;color:var(--text-dim);">bar</span>
+          </div>
+          <div style="padding:0.2em 0.5em;display:flex;gap:0.5em;align-items:center;border-bottom:1px solid var(--border);">
+            <span style="flex:2;color:var(--text);">품목A</span>
+            <span style="flex:1;color:var(--green);text-align:right;">8.4억</span>
+            <div style="flex:2;height:0.55em;background:var(--border);"><div style="width:85%;height:100%;background:var(--green-dim);"></div></div>
+          </div>
+          <div style="padding:0.2em 0.5em;display:flex;gap:0.5em;align-items:center;border-bottom:1px solid var(--border);">
+            <span style="flex:2;color:var(--text);">품목B</span>
+            <span style="flex:1;color:var(--amber);text-align:right;">6.1억</span>
+            <div style="flex:2;height:0.55em;background:var(--border);"><div style="width:62%;height:100%;background:rgba(255,170,0,0.4);"></div></div>
+          </div>
+          <div style="padding:0.2em 0.5em;display:flex;gap:0.5em;align-items:center;background:rgba(0,204,68,0.04);">
+            <span style="flex:2;color:var(--green);font-weight:700;">합계</span>
+            <span style="flex:1;color:var(--green);font-weight:700;text-align:right;">14.5억</span>
+            <div style="flex:2;color:var(--text-dim);">────────</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /stage -->
+
+<!-- ═══════════════════════════════════════════════════════
+     ESC 개요 모달
+════════════════════════════════════════════════════════ -->
+<div id="overview">
+  <div style="max-width:900px;margin:0 auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2em;">
+      <div>
+        <div style="font-size:0.65em;color:var(--text-dim);letter-spacing:0.1em;margin-bottom:0.2em;">ESC — OVERVIEW MODE</div>
+        <h2 style="font-size:1.5em;font-weight:800;color:var(--text);">
+          <span style="color:var(--green);">#</span> 슬라이드 목차
+        </h2>
+      </div>
+      <span class="t-badge t-badge-green" style="cursor:pointer;" onclick="toggleOverview()">✕ CLOSE [ESC]</span>
+    </div>
+    <div class="ov-grid" id="ov-grid"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     NAVIGATION
+════════════════════════════════════════════════════════ -->
+<div id="t-nav">
+  <div id="t-dots" style="display:flex;"></div>
+</div>
+
+<script>
+  /* ── 슬라이드 데이터 ── */
+  const LABELS = [
+    '01:TITLE',
+    '02:OVERVIEW',
+    '03:OKR',
+    '04:STRATEGY',
+    '05:AI_LOGIC',
+    '06:DASHBOARD',
+    '07:FUNC①④',
+    '08:FUNC⑤⑧',
+  ];
+  const TITLES = [
+    '의미있는 과제 진행상황 보고',
+    '과제 개요 & 대상자 정보',
+    '목표 (OKR)',
+    '전략 / 할 일',
+    '한 일 ① AI 로직 구현',
+    'DCM 대시보드 전체 구조',
+    '대시보드 주요 기능 ①~④',
+    '대시보드 주요 기능 ⑤~⑧',
+  ];
+
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+
+  /* ── 네비게이션 도트 생성 ── */
+  const dotsEl = document.getElementById('t-dots');
+  LABELS.forEach((label, i) => {
+    const d = document.createElement('div');
+    d.className = 'nav-dot' + (i === 0 ? ' active' : '');
+    d.textContent = label;
+    d.onclick = () => go(i);
+    dotsEl.appendChild(d);
+  });
+
+  /* ── 개요 그리드 생성 ── */
+  const ovGrid = document.getElementById('ov-grid');
+  TITLES.forEach((title, i) => {
+    const item = document.createElement('div');
+    item.className = 'ov-item';
+    item.innerHTML = `<div class="ov-num">${String(i+1).padStart(2,'0')}</div>
+      <div class="ov-title">${LABELS[i]}<br><span style="color:#CCFFCC;font-size:1.1em;">${title}</span></div>`;
+    item.onclick = () => { go(i); toggleOverview(false); };
+    ovGrid.appendChild(item);
+  });
+
+  /* ── 슬라이드 이동 ── */
+  function go(i) {
+    if (i < 0) i = total - 1;
+    if (i >= total) i = 0;
+    if (i === current) return;
+    slides[current].classList.remove('active');
+    current = i;
+    slides[current].classList.add('active');
+    document.querySelectorAll('.nav-dot').forEach((d, idx) => d.classList.toggle('active', idx === current));
+    document.getElementById('t-progress').style.width = ((current+1)/total*100) + '%';
+  }
+
+  /* ── 개요 토글 ── */
+  let ovOpen = false;
+  function toggleOverview(force) {
+    ovOpen = force !== undefined ? force : !ovOpen;
+    document.getElementById('overview').classList.toggle('show', ovOpen);
+  }
+
+  /* ── 초기화 ── */
+  document.getElementById('t-progress').style.width = (1/total*100) + '%';
+
+  /* ── 키보드 ── */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { toggleOverview(); return; }
+    if (ovOpen) return;
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(current+1); }
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); go(current-1); }
+    if (e.key >= '1' && e.key <= '9') go(parseInt(e.key)-1);
+  });
+
+  /* ── 터치 ── */
+  let tx = 0;
+  document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    if (ovOpen) return;
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 50) go(dx < 0 ? current+1 : current-1);
+  });
+</script>
+</body>
+</html>
